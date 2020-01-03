@@ -183,7 +183,7 @@ class OrderedModelBase(models.Model):
 
     def get_ordering_queryset(self, qs=None):
         qs = qs or self._meta.default_manager.all()
-        return qs.filter_by_order_with_respect_to(self)
+        return qs.filter_by_order_with_respect_to(self).select_for_update()
 
     def previous(self):
         """
@@ -215,12 +215,10 @@ class OrderedModelBase(models.Model):
         Swap the position of this object with a replacement object.
         """
         self._validate_ordering_reference(replacement)
-
+    
+        order = self._meta.default_manager.values_list(self.order_field_name, flat=True).get(pk=self.pk)
         order_field_name = self.order_field_name
-        order, replacement_order = (
-            getattr(self, order_field_name),
-            getattr(replacement, order_field_name),
-        )
+        replacement_order = getattr(replacement, order_field_name)
         setattr(self, order_field_name, replacement_order)
         setattr(replacement, order_field_name, order)
         self.save()
@@ -252,21 +250,19 @@ class OrderedModelBase(models.Model):
                     type(order).__name__
                 )
             )
+                
+        current_order_value_in_db = self._meta.default_manager.values_list(self.order_field_name, flat=True).get(pk=self.pk)
 
         order_field_name = self.order_field_name
-        if order is None or getattr(self, order_field_name) == order:
+        if order is None or current_order_value_in_db == order:
             # object is already at desired position
             return
         qs = self.get_ordering_queryset()
         extra_update = {} if extra_update is None else extra_update
-        if getattr(self, order_field_name) > order:
-            qs.below_instance(self).above(order, inclusive=True).increase_order(
-                **extra_update
-            )
+        if current_order_value_in_db > order:
+            qs.below(current_order_value_in_db).above(order, inclusive=True).increase_order(**extra_update)
         else:
-            qs.above_instance(self).below(order, inclusive=True).decrease_order(
-                **extra_update
-            )
+            qs.above(current_order_value_in_db).below(order, inclusive=True).decrease_order(**extra_update)
         setattr(self, order_field_name, order)
         self.save()
 
