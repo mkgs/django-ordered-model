@@ -1,6 +1,6 @@
 from functools import partial, reduce
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Max, Min, F
 from django.db.models.constants import LOOKUP_SEP
 from django.utils.module_loading import import_string
@@ -200,8 +200,9 @@ class OrderedModelBase(models.Model):
     def save(self, *args, **kwargs):
         order_field_name = self.order_field_name
         if getattr(self, order_field_name) is None:
-            order = self.get_ordering_queryset().get_next_order()
-            setattr(self, order_field_name, order)
+            with transaction.atomic():
+                order = self.get_ordering_queryset().get_next_order()
+                setattr(self, order_field_name, order)
         super().save(*args, **kwargs)
 
     def delete(self, *args, extra_update=None, **kwargs):
@@ -210,6 +211,7 @@ class OrderedModelBase(models.Model):
         qs.above_instance(self).decrease_order(**extra_update)
         super().delete(*args, **kwargs)
 
+    @transaction.atomic
     def swap(self, replacement):
         """
         Swap the position of this object with a replacement object.
@@ -240,6 +242,7 @@ class OrderedModelBase(models.Model):
         if _next:
             self.swap(_next)
 
+    @transaction.atomic
     def to(self, order, extra_update=None):
         """
         Move object to a certain position, updating all affected objects to move accordingly up or down.
