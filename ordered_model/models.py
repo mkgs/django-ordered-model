@@ -197,12 +197,12 @@ class OrderedModelBase(models.Model):
         """
         return self.get_ordering_queryset().above_instance(self).first()
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         order_field_name = self.order_field_name
         if getattr(self, order_field_name) is None:
-            with transaction.atomic():
-                order = self.get_ordering_queryset().get_next_order()
-                setattr(self, order_field_name, order)
+            order = self.get_ordering_queryset().get_next_order()
+            setattr(self, order_field_name, order)
         super().save(*args, **kwargs)
 
     def delete(self, *args, extra_update=None, **kwargs):
